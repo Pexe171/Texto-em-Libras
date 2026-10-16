@@ -242,15 +242,3 @@ Esse teste usa respostas de tradução simuladas para verificar a fila, a falha 
 A integração técnica não garante uma tradução linguisticamente correta. Nos testes, o serviço externo apresentou omissões e escolhas inadequadas de sentido, principalmente em textos abstratos. Dividir o texto pode facilitar a revisão, mas também pode retirar contexto. O modo de divisão pode ser desativado para comparar os resultados.
 
 O projeto não inclui uma revisão linguística automática, um acervo próprio de animações ou um mecanismo para treinar avatares. Também não substitui um intérprete de Libras. Mudanças nos serviços ou no protocolo do player podem exigir ajustes no código.
-
-## Referências e créditos
-
-A tradução, os avatares e o acervo de sinais pertencem ao ecossistema VLibras. Este aplicativo é uma integração independente com os serviços disponibilizados pelo projeto.
-
-- [Portal oficial VLibras](https://www.gov.br/governodigital/pt-br/acessibilidade-e-usuario/vlibras/vlibras)
-- [Documentação de integração](https://vlibras.gov.br/doc/widget/installation/webpageintegration.html)
-- [Repositório oficial VLibras Web](https://github.com/spbgovbr-vlibras/vlibras-web-browsers)
-- [Endereços dos serviços usados pelo VLibras](https://github.com/spbgovbr-vlibras/vlibras-web-browsers/blob/dev/src/core/config/index.ts)
-- [Protocolo de comunicação do player](https://github.com/spbgovbr-vlibras/vlibras-web-browsers/blob/dev/src/player/unity/index.js)
-
-Os componentes externos seguem suas próprias licenças e condições de uso. O repositório não redistribui o player nem os modelos 3D do VLibras.
