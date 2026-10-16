@@ -6,6 +6,7 @@ __pycache__/
 .venv/
 venv/
 .npm/
+.tmp/
 
 # Saidas de verificacao do navegador
 aplicativo/qa/*.png

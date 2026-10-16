@@ -1,0 +1,35 @@
+const assert=require('node:assert/strict');
+const {Session,load,KEY}=require('../public/session');
+const {splitText}=require('../public/text-utils');
+const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
+(async()=>{
+  const session=new Session();session.prepare('Primeiro. Segundo. Terceiro.',true,splitText);
+  let calls=[];
+  const failSecond=async text=>{calls.push(text);if(text==='Segundo.')throw Object.assign(new Error('Limite temporário'),{code:'RATE_LIMIT',retryable:true});return {gloss:text.toUpperCase()};};
+  await session.translate(failSecond,()=>{});
+  assert.deepEqual(calls,['Primeiro.','Segundo.']);assert.equal(session.segments[0].state,'done');assert.equal(session.segments[1].error.code,'RATE_LIMIT');assert.equal(session.complete(),false);
+  calls=[];await session.translate(async text=>{calls.push(text);return {gloss:text.toUpperCase()};},()=>{});
+  assert.deepEqual(calls,['Segundo.','Terceiro.']);assert.equal(session.complete(),true);
+  session.edit(1,'Outro sentido.');assert.equal(session.segments[1].gloss,'');assert.equal(session.segments[0].gloss,'PRIMEIRO.');assert.equal(session.fullGloss(),'');
+  await session.translate(async text=>({gloss:text.toUpperCase()}),()=>{},1);assert.equal(session.complete(),true);
+  const restored=new Session();assert.equal(restored.restore(session.snapshot()),session.text);assert.equal(restored.fullGloss(),session.fullGloss());
+  assert.throws(()=>restored.restore({...session.snapshot(),version:2}));
+  assert.throws(()=>restored.restore({...session.snapshot(),segments:[{text:'x'}]}));
+  assert.throws(()=>load({getItem:()=>'{broken'}));assert.throws(()=>load({getItem:()=>{throw new Error('blocked');}}));
+  assert.equal(load({getItem:key=>{assert.equal(key,KEY);return null;}}),null);
+  await session.translate(async()=>{throw new Error('Falha ao repetir');},()=>{},1);
+  assert.equal(session.segments[1].gloss,'');
+  await session.translate(async()=>({gloss:'RECUPERADO'}),()=>{});assert.equal(session.complete(),true);
+  // Uma resposta antiga nao pode substituir a nova execucao, mesmo ignorando AbortSignal.
+  const late=deferred();session.prepare('Antigo.',true,splitText);
+  const old=session.translate(()=>late.promise,()=>{});session.cancel();
+  session.prepare('Novo.',true,splitText);await session.translate(async()=>({gloss:'NOVO'}),()=>{});
+  late.resolve({gloss:'ANTIGO'});await old;assert.equal(session.fullGloss(),'NOVO');
+  session.prepare('Um. Dois.',true,splitText);const pending=deferred();let dispatched=0;
+  const task=session.translate(()=>{dispatched++;return pending.promise;},()=>{});session.cancel();
+  assert.equal(session.busy,false);assert.equal(session.segments[0].state,'cancelled');pending.resolve({gloss:'ATRASADO'});await task;
+  assert.equal(dispatched,1);assert.equal(session.segments[0].gloss,'');
+  session.prepare('Texto.',true,splitText);await session.translate(async()=>({gloss:' '}),()=>{});assert.equal(session.segments[0].error.code,'INVALID_RESPONSE');
+  assert.equal(session.edit(0,'x'.repeat(5001)),false);
+  console.log('Sessao: fila, falhas, retomada, edicao, restauracao e respostas tardias OK.');
+})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -11,6 +11,8 @@ Aplicativo local para escrever em português e acompanhar a tradução automáti
 - Pausar, continuar, repetir, parar e ajustar a velocidade.
 - Escolher entre os avatares Ícaro, Hosana e Guga.
 - Cancelar uma tradução ou retomar os trechos pendentes após uma falha.
+- Editar o português de um trecho e traduzir novamente somente aquela parte.
+- Salvar uma sessão neste navegador mediante opção e restaurar depois, sem envio automático.
 - Reutilizar as últimas oito frases pelo histórico do navegador.
 
 É um protótipo para experimentar a integração com o VLibras. Não possui um motor próprio de tradução, não funciona offline e não adapta os movimentos para personagens personalizados.
@@ -54,13 +56,16 @@ python aplicativo/servidor.py --port 8766 --no-browser
 
 ## Como usar
 
-1. Aguarde o avatar carregar e aparecer o estado **Pronto**.
-2. Escreva ou cole o texto em português.
+1. Escreva ou cole o texto em português. A tradução funciona mesmo se o avatar estiver carregando ou indisponível.
+2. O estado do avatar e o estado da tradução aparecem separadamente.
 3. Para textos longos, mantenha **Traduzir em trechos menores** ativado e use **Ver trechos antes de traduzir** para conferir a divisão.
-4. Clique em **Traduzir e sinalizar**, ou pressione `Ctrl+Enter`.
-5. Abra a revisão para comparar cada trecho com a sequência retornada. Use **Sinalizar trecho** para conferir uma parte separadamente.
+4. Clique em **Traduzir texto**, ou pressione `Ctrl+Enter`. O resultado fica pronto para revisão, sem iniciar a animação.
+5. Compare o original, o português editável e a glosa de cada trecho. Ao reformular um trecho, sua tradução antiga é invalidada; use **Traduzir este trecho** para atualizar somente aquela parte.
+6. Quando o avatar estiver pronto, clique em **Reproduzir** para a sequência completa ou **Sinalizar trecho** para uma parte concluída. Isso também funciona durante a tradução de outras partes.
 
-Se uma tradução parar no meio, **Retomar trechos pendentes** continua a partir dos trechos ainda não traduzidos. Os concluídos são preservados na página. Ao editar o texto ou preparar uma nova divisão, essa revisão é refeita.
+Se uma tradução parar no meio, **Retomar trechos pendentes** continua a partir dos trechos ainda não traduzidos. **Tentar este trecho novamente** repete somente a parte escolhida. Os concluídos são preservados na página. Alterar um trecho não descarta os demais. Alterar o texto principal e gerar outra divisão exige confirmar o descarte quando já houver traduções ou edições.
+
+**Salvar esta sessão neste navegador** começa desativado. Ao ativar, um rascunho com texto, edições e traduções concluídas é atualizado localmente. Na próxima abertura, escolha **Restaurar sessão** ou **Descartar sessão salva**. Restaurar não envia textos ao tradutor nem inicia reprodução. **Apagar sessão salva** remove o rascunho e desativa o salvamento; o histórico tem um controle separado. Se o armazenamento falhar, a sessão continua em memória com um aviso.
 
 O exemplo sobre mudanças na vida é uma versão editorial em frases mais diretas. Ele pode ser carregado, lido e editado antes da tradução. Não é uma tradução em Libras previamente validada.
 
@@ -87,22 +92,27 @@ flowchart TD
     Cache -->|Não| Tradutor[Serviço externo de tradução VLibras]
     Tradutor --> Retorno
     Resposta --> Revisao[Texto original e glosa lado a lado]
-    Revisao -->|postMessage| Player[Player oficial VLibras em iframe]
+    Revisao --> Escolha[Pessoa revisa e clica em Reproduzir]
+    Escolha -->|postMessage| Player[Player oficial VLibras em iframe]
     Player --> Acervo[Carregar avatar e sinais do VLibras]
     Acervo --> Animacao[Avatar sinaliza no navegador]
     Player -->|Eventos de progresso e reprodução| Interface
     Interface --> Historico[Histórico no localStorage do navegador]
+    Revisao --> Opcao{Salvar sessão ativado?}
+    Opcao -->|Sim| Rascunho[Rascunho local com texto e traduções]
+    Rascunho --> Restaurar[Oferecer restauração na próxima abertura]
+    Restaurar --> Revisao
 ```
 
 ### Do texto ao movimento
 
 **1. Preparação do texto.** A interface aceita até 5.000 caracteres. Com a divisão ativada, `text-utils.js` separa frases por pontuação ou quebra de linha. Trechos maiores são divididos preferencialmente nas vírgulas e, quando necessário, entre palavras, buscando um limite de 220 caracteres. O código não substitui palavras nem corrige o sentido do texto.
 
-**2. Tradução em fila.** `app.js` envia um trecho por vez ao servidor local. A página mostra o progresso e permite interromper a fila. Se houver uma falha, os trechos concluídos continuam disponíveis para revisão e reprodução individual; a sequência completa só é enviada ao avatar quando todos terminam.
+**2. Tradução em fila.** `session.js` mantém os trechos e envia um por vez ao servidor local. A página mostra o progresso e permite interromper a fila. Se houver uma falha, os trechos concluídos continuam disponíveis para revisão e reprodução individual. Uma execução cancelada recebe um identificador inválido, para que respostas atrasadas não sobrescrevam uma execução nova. A fila funciona independentemente do carregamento do avatar.
 
 **3. Comunicação com o VLibras.** `servidor.py` valida o pedido e consulta o serviço de tradução. O resultado é uma **glosa**: uma representação textual da sequência que será interpretada pelo player. Ela não precisa ter a mesma ordem ou a mesma forma de uma frase em português.
 
-**4. Reprodução.** O navegador envia a glosa ao player oficial por `postMessage`. O player carrega os recursos dos servidores VLibras e controla a animação. Os controles de pausa, velocidade, avatar e repetição usam esse mesmo canal. As mensagens recebidas pela página são verificadas pela origem e pela janela do iframe.
+**4. Reprodução.** Depois de um clique em **Reproduzir** ou **Sinalizar trecho**, `player.js` envia a glosa ao player oficial por `postMessage`. O player carrega os recursos dos servidores VLibras e controla a animação. Os controles de pausa, velocidade, avatar e repetição usam esse mesmo canal. As mensagens recebidas pela página são verificadas pela origem e pela janela do iframe. Eventos de inatividade são mostrados como espera, sem afirmar que todos os sinais foram reproduzidos. Parar a animação aparece como reprodução interrompida.
 
 ### O que roda onde
 
@@ -140,6 +150,14 @@ Exemplo de resposta:
 
 O conteúdo traduzido depende da resposta do VLibras e pode mudar. Pedidos inválidos recebem `400`; origem externa informada no pedido é rejeitada com `403`; formato diferente de JSON recebe `415`. Falhas do serviço de tradução são apresentadas ao navegador como `502`, acompanhadas de uma mensagem sobre a causa.
 
+As respostas de erro preservam `error` e incluem `code` e `retryable`. Quando existe um status HTTP externo, também incluem `upstream_status`:
+
+```json
+{"error":"O serviço VLibras está indisponível.","code":"UPSTREAM_ERROR","retryable":true,"upstream_status":500}
+```
+
+Os códigos do tradutor são `TIMEOUT`, `CONNECTION_ERROR`, `RATE_LIMIT`, `UPSTREAM_ERROR` e `INVALID_RESPONSE`. Erros de pedido usam `INVALID_REQUEST`, `FORBIDDEN_ORIGIN`, `UNSUPPORTED_MEDIA_TYPE` ou `NOT_FOUND`. A mensagem é para leitura; a classificação é feita pelos campos, sem interpretar o texto.
+
 ### Tentativas, cache e armazenamento
 
 O servidor faz até três tentativas para erros temporários, como falhas de conexão, respostas HTTP 408, 429 e 5xx. Cada tentativa de conexão usa um timeout de oito segundos. Entre tentativas, há uma pequena espera. A interface limita a espera de cada trecho a 35 segundos.
@@ -147,6 +165,8 @@ O servidor faz até três tentativas para erros temporários, como falhas de con
 Até 128 traduções bem-sucedidas ficam em um cache em memória. Erros não entram no cache. Ele é compartilhado pelas requisições daquele processo e desaparece quando o servidor é encerrado.
 
 O histórico guarda até oito textos no `localStorage` do navegador. Pode ser apagado pela própria interface. O servidor não salva as frases em arquivos, mas os textos são enviados ao serviço externo para tradução. O navegador também carrega o player, os sinais e fontes externas.
+
+O rascunho opcional usa a chave versionada `texto-em-libras-session-v1`, separada do histórico. A restauração valida limites e formato; sessões incompatíveis ou corrompidas não impedem o uso do aplicativo. Não há banco de dados ou sincronização do rascunho entre dispositivos.
 
 Cancelar interrompe a fila no navegador. Uma requisição já recebida pelo servidor pode terminar em segundo plano.
 
@@ -163,6 +183,8 @@ Texto-em-Libras/
     │   ├── index.html
     │   ├── style.css
     │   ├── app.js
+    │   ├── session.js
+    │   ├── player.js
     │   ├── text-utils.js
     │   └── texto-vida.txt
     └── qa/
@@ -170,6 +192,8 @@ Texto-em-Libras/
         ├── package-lock.json
         ├── test_servidor.py
         ├── test-text.cjs
+        ├── test-session.cjs
+        ├── test-player.cjs
         ├── verificar.cjs
         └── verificar-texto-longo.cjs
 ```
@@ -185,10 +209,12 @@ Na raiz do projeto:
 ```sh
 python aplicativo/qa/test_servidor.py
 node aplicativo/qa/test-text.cjs
+node aplicativo/qa/test-session.cjs
+node aplicativo/qa/test-player.cjs
 node --check aplicativo/public/app.js
 ```
 
-Os testes Python verificam tentativas após falha, cache, rejeição de respostas inválidas e tratamento de erros do tradutor. Os testes de divisão conferem a preservação de palavras e pontuação, o tratamento de números e os limites dos trechos. Essas verificações não precisam acessar o VLibras.
+Os testes Python verificam tentativas após falha, cache, classificação de erros, rejeição de respostas inválidas e cancelamento de conexões. Os testes JavaScript cobrem divisão, retomada, edição isolada, restauração, mensagens do player e respostas tardias após cancelamento. Essas verificações não precisam acessar o VLibras. O GitHub Actions as executa em Python 3.10 e 3.14, com Node.js 20, em cada push e pull request.
 
 ### Verificações no navegador
 
@@ -224,7 +250,14 @@ Em outro terminal:
 node aplicativo/qa/verificar-texto-longo.cjs
 ```
 
-Esse teste usa respostas de tradução simuladas para verificar a fila, a falha parcial, a retomada e o cancelamento. O avatar continua sendo carregado do serviço real. Não é um teste de qualidade linguística. Capturas e relatórios gerados são ignorados pelo Git.
+Esse teste simula tanto o tradutor quanto o player para verificar a fila, falha parcial, edição, retomada, cancelamento, respostas tardias, revisão sem reprodução automática e armazenamento. Funciona sem depender dos serviços VLibras. Não é um teste de qualidade linguística. Capturas e relatórios gerados são ignorados pelo Git.
+
+Use `BASE_URL` para testar um servidor em outro endereço local. Para testar o serviço real na porta 8766, por exemplo, no PowerShell:
+
+```powershell
+$env:BASE_URL = 'http://127.0.0.1:8766'
+node aplicativo/qa/verificar.cjs
+```
 
 ## Problemas comuns
 

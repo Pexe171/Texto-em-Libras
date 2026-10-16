@@ -6,6 +6,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 import argparse
 import json
+import socket
 import threading
 import time
 import webbrowser
@@ -15,7 +16,17 @@ TRANSLATOR = 'https://traducao2.vlibras.gov.br/translate'
 
 
 class TranslationUnavailable(Exception):
-    pass
+    def __init__(self, message, code='UPSTREAM_ERROR', retryable=True, upstream_status=None):
+        super().__init__(message)
+        self.code = code
+        self.retryable = retryable
+        self.upstream_status = upstream_status
+
+    def payload(self):
+        data = {'error': str(self), 'code': self.code, 'retryable': self.retryable}
+        if self.upstream_status is not None:
+            data['upstream_status'] = self.upstream_status
+        return data
 
 
 @lru_cache(maxsize=128)
@@ -23,6 +34,7 @@ def translate(text):
     request = Request(TRANSLATOR, data=json.dumps({'text': text}).encode('utf-8'),
                       headers={'Content-Type': 'application/json; charset=utf-8'}, method='POST')
     for attempt in range(3):
+        upstream_status = None
         try:
             with urlopen(request, timeout=8) as response:
                 content = response.read(100_000).decode('utf-8').strip()
@@ -35,18 +47,25 @@ def translate(text):
                 raise ValueError('Resposta invalida')
             return content.strip()
         except HTTPError as error:
+            upstream_status = error.code
+            code = 'RATE_LIMIT' if error.code == 429 else 'UPSTREAM_ERROR'
             detail = f'O servico VLibras retornou HTTP {error.code}.'
             retryable = error.code in (408, 429) or 500 <= error.code <= 599
             error.close()
             if not retryable:
-                raise TranslationUnavailable(detail + ' Tente uma frase menor.') from None
-        except (URLError, TimeoutError, OSError):
+                raise TranslationUnavailable(detail + ' Tente uma frase menor.', code, False, upstream_status) from None
+        except (TimeoutError, socket.timeout):
+            code = 'TIMEOUT'
+            detail = 'O servico VLibras excedeu o tempo de resposta.'
+        except (URLError, OSError) as error:
+            code = 'TIMEOUT' if isinstance(getattr(error, 'reason', None), TimeoutError) else 'CONNECTION_ERROR'
             detail = 'Nao foi possivel conectar ao servico VLibras.'
         except (ValueError, UnicodeError):
+            code = 'INVALID_RESPONSE'
             detail = 'O servico VLibras retornou uma resposta invalida.'
         if attempt < 2:
             time.sleep(0.5 * (attempt + 1))
-    raise TranslationUnavailable(detail + ' As 3 tentativas falharam. Aguarde um pouco e tente novamente.')
+    raise TranslationUnavailable(detail + ' As 3 tentativas falharam. Aguarde um pouco e tente novamente.', code, True, upstream_status)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -58,12 +77,15 @@ class Handler(SimpleHTTPRequestHandler):
 
     def json_response(self, status, payload):
         data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Content-Length', str(len(data)))
-        self.send_header('Cache-Control', 'no-store')
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            pass  # O navegador pode cancelar enquanto o tradutor ainda responde.
 
     def do_GET(self):
         if self.path == '/favicon.ico':
@@ -76,14 +98,14 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         if self.path != '/api/translate':
-            return self.json_response(404, {'error': 'Endereco nao encontrado.'})
+            return self.json_response(404, {'error': 'Endereco nao encontrado.', 'code': 'NOT_FOUND', 'retryable': False})
         # Aceita apenas o proprio aplicativo; evita formularios de outros sites.
         origin = self.headers.get('Origin')
         if origin and origin not in (f'http://127.0.0.1:{self.server.server_port}',
                                      f'http://localhost:{self.server.server_port}'):
-            return self.json_response(403, {'error': 'Origem nao permitida.'})
+            return self.json_response(403, {'error': 'Origem nao permitida.', 'code': 'FORBIDDEN_ORIGIN', 'retryable': False})
         if self.headers.get_content_type() != 'application/json':
-            return self.json_response(415, {'error': 'Envie JSON.'})
+            return self.json_response(415, {'error': 'Envie JSON.', 'code': 'UNSUPPORTED_MEDIA_TYPE', 'retryable': False})
         try:
             size = int(self.headers.get('Content-Length', '0'))
             if not 0 < size <= 32000:
@@ -93,12 +115,12 @@ class Handler(SimpleHTTPRequestHandler):
             if not isinstance(text, str) or not 1 <= len(text.strip()) <= 5000:
                 raise ValueError('Escreva entre 1 e 5000 caracteres.')
         except (ValueError, UnicodeError) as error:
-            return self.json_response(400, {'error': str(error)})
+            return self.json_response(400, {'error': str(error), 'code': 'INVALID_REQUEST', 'retryable': False})
         try:
             gloss = translate(text.strip())
         except TranslationUnavailable as error:
             self.log_error('Tradutor externo: %s', str(error))
-            return self.json_response(502, {'error': str(error)})
+            return self.json_response(502, error.payload())
         return self.json_response(200, {'gloss': gloss})
 
 

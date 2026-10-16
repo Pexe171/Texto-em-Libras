@@ -2,6 +2,7 @@ const { chromium } = require('playwright-core');
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
+const BASE=process.env.BASE_URL||'http://127.0.0.1:8765';
 
 (async () => {
   const browser = await chromium.launch({executablePath:process.env.BROWSER_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless:true, args:['--enable-unsafe-swiftshader'], downloadsPath:path.join(__dirname,'downloads')});
@@ -11,15 +12,15 @@ const assert = require('node:assert/strict');
   page.on('pageerror', error => report.errors.push(error.message));
   page.on('requestfailed', request => report.requestsFailed.push({url:request.url(), error:request.failure()?.errorText}));
   try {
-    const health = await context.request.get('http://127.0.0.1:8765/api/health');
+    const health = await context.request.get(`${BASE}/api/health`);
     assert.equal(health.status(), 200);
-    const invalid = await context.request.post('http://127.0.0.1:8765/api/translate', {data:{text:''}});
+    const invalid = await context.request.post(`${BASE}/api/translate`, {data:{text:''}});
     assert.equal(invalid.status(), 400);
-    const foreign = await context.request.post('http://127.0.0.1:8765/api/translate', {data:{text:'Olá'},headers:{Origin:'https://example.com'}});
+    const foreign = await context.request.post(`${BASE}/api/translate`, {data:{text:'Olá'},headers:{Origin:'https://example.com'}});
     assert.equal(foreign.status(), 403);
     console.log('Servidor: saude, validacao e origem OK');
     await page.addInitScript(() => { window.qaEvents=[]; window.addEventListener('message', e => { if(e.data?.type==='unity_event') window.qaEvents.push({event:e.data.event,data:e.data.data}); }); });
-    await page.goto('http://127.0.0.1:8765', {waitUntil:'domcontentloaded'});
+    await page.goto(BASE, {waitUntil:'domcontentloaded'});
     await page.getByRole('button',{name:'Olá, tudo bem?',exact:true}).click();
     assert.equal(await page.locator('#text').inputValue(), 'Olá, tudo bem?');
     console.log('Interface aberta; aguardando o player real…');
@@ -30,6 +31,9 @@ const assert = require('node:assert/strict');
     const result = await translation;
     assert.equal(result.status(),200);
     await page.waitForFunction(() => document.getElementById('gloss').textContent.includes('OI'),null,{timeout:40000});
+    await page.waitForFunction(() => document.getElementById('cancel-translation').hidden);
+    assert.match(await page.locator('#translation-status').textContent(), /pronta para revisão/);
+    await page.locator('#play-all').click();
     await page.waitForFunction(() => window.qaEvents.some(e=>e.event==='counter_gloss' && Number(e.data?.[1])>0),null,{timeout:60000});
     console.log('Traducao e sinais reais recebidos pelo avatar');
     await page.locator('#speed').selectOption('0.75');

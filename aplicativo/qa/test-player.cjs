@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict');
+const vm=require('node:vm');
+const fs=require('node:fs');
+const path=require('node:path');
+let listener;const sent=[];const contentWindow={postMessage:(data,origin)=>sent.push({data,origin})};
+const window={addEventListener:(name,fn)=>{listener=fn;}};
+vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../public/player.js'),'utf8'),{window,setTimeout,clearTimeout});
+const player=new window.LibrasPlayer.Player({contentWindow},()=>{});
+const event=(type,data,origin='https://vlibras.gov.br',source=contentWindow)=>listener({origin,source,data:{type:'unity_event',event:type,data}});
+event('on_load_player',null,'https://example.com');assert.equal(player.ready,false);
+event('on_load_player',null,'https://vlibras.gov.br',{});assert.equal(player.ready,false);
+event('on_load_player');assert.equal(player.ready,true);assert.equal(sent.filter(x=>x.data.method==='playNow').length,0);
+player.play('OI');assert.equal(player.state,'loading-signs');
+event('on_playing_state_change',['True','False','False','False']);assert.equal(player.state,'playing');
+player.pause();assert.equal(player.state,'paused');player.stop();
+event('on_playing_state_change',['False','False','False','False']);assert.equal(player.state,'stopped');
+player.play('OI');event('on_playing_state_change',['False','False','False','False']);assert.equal(player.state,'idle');
+assert.ok(!player.state.includes('completed'));console.log('Player: origem, reproducao explicita, pausa e parada OK.');

@@ -6,12 +6,15 @@
   <title>Projeto Libras · Texto em movimento</title>
   <link rel="stylesheet" href="style.css">
   <script src="text-utils.js" defer></script>
+  <script src="session.js" defer></script>
+  <script src="player.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
 <header><a class="brand" href="/" aria-label="Projeto Libras, início"><span class="brand-icon" aria-hidden="true">L</span> projeto<span>libras</span></a><span class="badge">Laboratório de sinais</span></header>
 <main>
   <div class="intro"><p class="eyebrow">PALAVRAS GANHAM MOVIMENTO</p><h1>Uma nova forma<br>de <em>se comunicar.</em></h1><p>Escreva em português e acompanhe a tradução automática<br class="desktop"> para Libras com um avatar 3D.</p></div>
+  <section id="restore-banner" class="session-banner" hidden aria-label="Sessão salva"><p>Há uma sessão salva neste navegador. Restaurar não envia textos nem inicia a reprodução.</p><button id="restore-session" class="secondary">Restaurar sessão</button><button id="discard-session" class="secondary">Descartar sessão salva</button></section>
   <div class="workspace">
     <section class="editor card" aria-labelledby="editor-title">
       <div class="section-head"><span class="step">01</span><h2 id="editor-title">Seu texto</h2><span class="language">Português → Libras</span></div>
@@ -23,9 +26,11 @@
       <details class="adaptation"><summary>Testar uma versão mais direta do seu texto sobre a vida</summary><p>A versão preparada usa frases curtas e explicita algumas metáforas. Leia e ajuste antes de traduzir: uma adaptação pode mudar nuances.</p><button id="load-adapted" class="secondary">Carregar versão para revisar</button></details>
       <p class="small-label">COMECE COM UMA IDEIA</p>
       <div class="examples"><button type="button" data-text="Olá, tudo bem?">Olá, tudo bem?</button><button type="button" data-text="Muito obrigado!">Muito obrigado!</button><button type="button" data-text="Qual é o seu nome?">Qual é o seu nome?</button></div>
-      <button class="primary" id="translate" disabled>Traduzir e sinalizar <span aria-hidden="true">↗</span></button>
+      <button class="primary" id="translate" disabled>Traduzir texto</button>
       <button id="cancel-translation" class="secondary" hidden>Cancelar tradução</button>
       <button id="resume-translation" class="secondary" hidden>Retomar trechos pendentes</button>
+      <p id="translation-status" class="translation-message" role="status" aria-live="polite">Escreva um texto para começar.</p>
+      <div class="session-options"><label><input type="checkbox" id="save-session"> Salvar esta sessão neste navegador</label><button id="erase-session" class="text-button">Apagar sessão salva</button><p id="storage-status" role="status" aria-live="polite"></p></div>
       <p id="privacy" class="privacy">Ao traduzir, seu texto é enviado ao serviço público VLibras. O histórico fica apenas neste navegador.</p>
       <details id="translation-details"><summary>Ver sequência traduzida</summary><p id="gloss">Sua tradução aparecerá aqui.</p></details>
       <details id="segment-details" hidden><summary id="segment-summary">Revisar trechos</summary><p class="translation-help">Compare o sentido de cada trecho. Use “Sinalizar trecho” para conferir individualmente. Nenhuma tradução aqui foi validada linguisticamente.</p><div id="segments"></div></details>
@@ -37,7 +42,7 @@
         <div id="loading" class="loading"><span class="loader" aria-hidden="true"></span><strong id="loading-title">Preparando seu avatar</strong><span id="loading-subtitle">O primeiro acesso pode demorar um pouco.</span><progress id="progress" max="100" value="0" aria-label="Carregamento do avatar"></progress><button id="retry" class="secondary" hidden>Tentar novamente</button></div>
         <span class="stage-credit">Avatar e tradução · VLibras</span>
       </div>
-      <div class="controls"><button id="pause" disabled aria-label="Pausar animação">Pausar</button><button id="repeat" disabled>Repetir</button><button id="stop" disabled>Parar</button><label class="speed" for="speed">Velocidade <select id="speed"><option value="0.5">0,5×</option><option value="0.75">0,75×</option><option value="1" selected>1×</option><option value="1.5">1,5×</option><option value="2">2×</option></select></label></div>
+      <div class="controls"><button id="play-all" disabled>Reproduzir</button><button id="pause" disabled aria-label="Pausar animação">Pausar</button><button id="repeat" disabled>Repetir</button><button id="stop" disabled>Parar</button><label class="speed" for="speed">Velocidade <select id="speed"><option value="0.5">0,5×</option><option value="0.75">0,75×</option><option value="1" selected>1×</option><option value="1.5">1,5×</option><option value="2">2×</option></select></label></div>
       <div class="viewer-footer"><span id="status" role="status" aria-live="polite">Aguardando o carregamento do avatar.</span><label for="avatar-choice" class="sr-only">Escolher avatar</label><select id="avatar-choice"><option value="icaro">Ícaro</option><option value="hosana">Hosana</option><option value="guga">Guga</option></select></div>
     </section>
   </div>
