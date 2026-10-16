@@ -1,0 +1,39 @@
+# Dependencias e caches locais
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.npm/
+
+# Saidas de verificacao do navegador
+aplicativo/qa/*.png
+aplicativo/qa/resultado*.json
+aplicativo/qa/downloads/
+playwright-report/
+test-results/
+
+# Recursos de pesquisa e downloads: nao fazem parte do prototipo
+downloads/
+dados/
+modelos/
+ferramentas/
+aplicativo/referencias/
+
+# Registros de pesquisa preservados apenas no computador
+/documentacao/
+/licencas/
+/LEIA-ME.md
+/aplicativo/README.md
+
+# Arquivos locais e credenciais
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
